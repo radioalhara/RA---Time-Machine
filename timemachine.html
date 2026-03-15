@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Radio alHara — Time Machine</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#fff;touch-action:none}
+
+#app{width:100%;height:100vh;display:flex;flex-direction:column}
+
+/* Top bar */
+#top-bar{display:flex;align-items:baseline;justify-content:space-between;padding:24px 32px 16px;flex-shrink:0}
+#station-id{font-size:11px;letter-spacing:0.25em;color:#2a2a2a;text-transform:uppercase}
+#date-display{font-size:14px;color:#fff;letter-spacing:0.12em}
+
+/* Timeline */
+#timeline-wrap{flex:1;position:relative;overflow:hidden;cursor:crosshair}
+#timeline-canvas{position:absolute;top:0;left:0;width:100%;height:100%}
+#needle-el{position:absolute;top:0;bottom:24px;left:50%;width:1px;background:red;pointer-events:none;z-index:5}
+#needle-el::before{content:'';position:absolute;top:0;left:-4px;border-left:4px solid transparent;border-right:4px solid transparent;border-top:8px solid red}
+#needle-el::after{content:'';position:absolute;bottom:0;left:-4px;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:8px solid red}
+#needle-date{position:absolute;bottom:4px;left:50%;font-size:9px;color:#ff3333;letter-spacing:0.1em;white-space:nowrap;pointer-events:none;z-index:6;transform:translateX(-50%)}
+
+/* Player */
+#player{height:100px;border-top:1px solid #111;display:flex;align-items:center;gap:20px;padding:0 32px;flex-shrink:0;background:#000}
+#player-art{width:64px;height:64px;border-radius:6px;overflow:hidden;flex-shrink:0;background:#0d0d0d;border:1px solid #1a1a1a;display:flex;align-items:center;justify-content:center;font-size:8px;color:#2a2a2a;letter-spacing:0.1em;text-transform:uppercase}
+#player-art img{width:100%;height:100%;object-fit:cover;display:none}
+#player-meta{flex:1;min-width:0}
+#player-show-date{font-size:9px;color:#333;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:4px}
+#player-show-name{font-size:15px;color:#fff;letter-spacing:0.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:5px}
+#player-replay{font-size:9px;color:#333;letter-spacing:0.1em;text-transform:uppercase}
+#player-replay span{color:#ff3333}
+#scrubber-wrap{width:100%;margin-top:7px;position:relative;height:2px;background:#1a1a1a;border-radius:2px;cursor:pointer}
+#scrubber-fill{height:100%;background:#fff;border-radius:2px;width:0%;pointer-events:none}
+#scrubber-dot{position:absolute;top:50%;width:8px;height:8px;background:red;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;left:0%}
+#player-btns{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.pbtn{width:46px;height:46px;border-radius:50%;border:1px solid #222;background:transparent;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:border-color 0.15s,background 0.15s;flex-shrink:0}
+.pbtn:hover{border-color:#444;background:#0d0d0d}
+.pbtn svg{width:17px;height:17px}
+#play-btn svg{fill:#fff;stroke:none}
+#no-audio{font-size:9px;color:#2a2a2a;letter-spacing:0.1em;text-align:center;padding:0 12px;max-width:120px;line-height:1.5}
+
+/* Controls */
+#controls{height:96px;background:#000;border-top:1px solid #0d0d0d;display:flex;align-items:center;justify-content:center;gap:80px;flex-shrink:0;padding-bottom:8px}
+.kw{display:flex;flex-direction:column;align-items:center;gap:6px}
+.kl{font-size:9px;color:#2a2a2a;letter-spacing:0.18em;text-transform:uppercase}
+.knob{width:52px;height:52px;border-radius:50%;background:#080808;border:1px solid #1e1e1e;position:relative;cursor:grab;user-select:none;touch-action:none;flex-shrink:0}
+.knob:active{cursor:grabbing}
+.kd{position:absolute;width:2px;height:11px;background:#fff;border-radius:1px;top:5px;left:50%;transform:translateX(-50%);transform-origin:50% 21px}
+.ks{font-size:9px;color:#ff3333;letter-spacing:0.1em;margin-top:2px;min-width:70px;text-align:center}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top-bar">
+    <div id="station-id">Radio alHara — راديو الحارة · Time Machine</div>
+    <div id="date-display">Now</div>
+  </div>
+
+  <div id="timeline-wrap">
+    <canvas id="timeline-canvas"></canvas>
+    <div id="needle-el"></div>
+    <div id="needle-date">NOW</div>
+  </div>
+
+  <div id="player">
+    <div id="player-art"><img id="player-img" src="" alt=""><span id="player-art-text">NO ART</span></div>
+    <div id="player-meta">
+      <div id="player-show-date">—</div>
+      <div id="player-show-name">select a show</div>
+      <div id="player-replay">REPLAY <span id="time-display">00:00</span></div>
+      <div id="scrubber-wrap">
+        <div id="scrubber-fill"></div>
+        <div id="scrubber-dot"></div>
+      </div>
+    </div>
+    <div id="player-btns">
+      <div id="no-audio">turn knob to browse archive</div>
+      <button class="pbtn" id="rewind-btn" title="−30s" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"/>
+          <path d="M3.51 15a9 9 0 1 0 .49-3.85"/>
+          <text x="12" y="15.5" font-size="5.5" fill="#fff" stroke="none" text-anchor="middle" font-family="Courier New">30</text>
+        </svg>
+      </button>
+      <button class="pbtn" id="play-btn" title="Play" style="display:none">
+        <svg id="play-icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="controls">
+    <div class="kw">
+      <div class="kl">Tuning</div>
+      <div class="knob" id="tk"><div class="kd" id="td"></div></div>
+      <div class="ks">2020 ← → now</div>
+    </div>
+    <div class="kw">
+      <div class="kl">Zoom</div>
+      <div class="knob" id="zk"><div class="kd" id="zd"></div></div>
+      <div class="ks" id="zs">all time</div>
+    </div>
+  </div>
+</div>
+
+<audio id="audio" preload="none"></audio>
+
+<script>
+// ─── SHOW DATA ──────────────────────────────────────────────────────────────
+// Replace this with real Sanity data. Each show:
+// { h: fractional hours from START, name, artist, hour, day (index), audioUrl (optional) }
+// audioUrl = local server path e.g. 'http://192.168.1.x:8080/filename.mp3'
+
+const SN=['Drift Conditions','Sacred Spaces','Satellite of Love','Everybody Loves to Boogie','Business Trip w/ Madeooh','whose world? w/ Zenim','Dream Weapons','Marwan Hawash','Address Hymen','Salon Oblique','Pleasure Principle w/ Sarah Evans','DanceFleur w/ Markeno','Radio Black Magic','Ekphrasis','ATLAS','Funky Fresh Morning w/ Felonius Funk','Android Feelings','Throughlines w/ Erin Alexa','Sensual Pills','Isaac Soto','Zadar','Felonius Funk LIVE'];
+const AR=['Felonius Funk','Sarah Evans','Markeno','Jude Alexander','Erin Alexa','Zenim','Isaac Soto','Miguel Santos','Stefan','Various','Zadar'];
+
+const START=new Date(2020,3,1).getTime();
+const NOW_TS=new Date(2026,2,14,14,0,0).getTime();
+const TOTAL_DAYS=Math.ceil((NOW_TS-START)/864e5);
+const TOTAL_HOURS=TOTAL_DAYS*24;
+const D=864e5;
+
+const shows=[];
+const byDay={};
+// Seed for consistent mock data
+let seed=42;
+function rand(){seed=(seed*1664525+1013904223)&0xffffffff;return(seed>>>0)/0xffffffff;}
+
+for(let i=0;i<TOTAL_DAYS;i++){
+  const d=new Date(START+i*D),dow=d.getDay();
+  if(rand()<(dow>=5?.88:dow===0?.72:.62)){
+    const n=Math.floor(rand()*9)+1,used=new Set();
+    byDay[i]=[];
+    for(let j=0;j<n;j++){
+      let hr=6+Math.floor(rand()*17);
+      while(used.has(hr)) hr=(hr+1)%24;
+      used.add(hr);
+      const s={
+        h:i*24+hr,
+        name:SN[Math.floor(rand()*SN.length)],
+        artist:AR[Math.floor(rand()*AR.length)],
+        hour:hr,
+        day:i,
+        audioUrl:null // plug in real URL here
+      };
+      shows.push(s);
+      byDay[i].push(s);
+    }
+    byDay[i].sort((a,b)=>a.hour-b.hour);
+  }
+}
+shows.sort((a,b)=>a.h-b.h);
+
+let maxPerDay=1;
+for(let k in byDay) if(byDay[k].length>maxPerDay) maxPerDay=byDay[k].length;
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+const ZOOM_MAX=TOTAL_DAYS;
+const ZOOM_MIN=1.34; // bars = 28px at 1024px wide — hard stop
+let posH=TOTAL_HOURS-1;
+let zoomSpan=TOTAL_DAYS;
+let targetZoom=TOTAL_DAYS;
+let zoomRaf=null;
+let Wpx=800,Hpx=300;
+let zoomCumAngle=135; // starts at max (all time)
+let tuneCum=0;
+let currentShow=null;
+// Per-show height progress: key=show.h, value=0..1 (grows as played/visited)
+const showProgress={};
+// Animated display heights (lerp toward target)
+const showDisplayH={};
+
+// ─── ELEMENTS ────────────────────────────────────────────────────────────────
+const cv=document.getElementById('timeline-canvas');
+const ct=cv.getContext('2d');
+const ddEl=document.getElementById('date-display');
+const ndEl=document.getElementById('needle-date');
+const zsEl=document.getElementById('zs');
+const zdEl=document.getElementById('zd');
+const tdEl=document.getElementById('td');
+
+const audio=document.getElementById('audio');
+const playBtn=document.getElementById('play-btn');
+const playIcon=document.getElementById('play-icon');
+const rewindBtn=document.getElementById('rewind-btn');
+const scrubFill=document.getElementById('scrubber-fill');
+const scrubDot=document.getElementById('scrubber-dot');
+const timeDisplay=document.getElementById('time-display');
+const scrubWrap=document.getElementById('scrubber-wrap');
+const noAudioEl=document.getElementById('no-audio');
+const playerName=document.getElementById('player-show-name');
+const playerDate=document.getElementById('player-show-date');
+const playerImg=document.getElementById('player-img');
+const playerArtText=document.getElementById('player-art-text');
+
+const MO=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+const MF=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MFull=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DFull=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function fmt(s){
+  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);
+  if(h>0) return pad(h)+':'+pad(m)+':'+pad(sec);
+  return pad(m)+':'+pad(sec);
+}
+function pad(n){return String(n).padStart(2,'0');}
+
+function zoomLabel(s){
+  if(s>=TOTAL_DAYS) return 'all time';
+  if(s>=1095) return '3 years';
+  if(s>=730) return '2 years';
+  if(s>=365) return '1 year';
+  if(s>=183) return '6 months';
+  if(s>=122) return '4 months';
+  if(s>=61) return '2 months';
+  if(s>=30) return '1 month';
+  if(s>=14) return '2 weeks';
+  if(s>=7) return '1 week';
+  if(s>=1) return '1 day';
+  return '12 hours';
+}
+
+// ─── RESIZE ──────────────────────────────────────────────────────────────────
+function resize(){
+  const w=document.getElementById('timeline-wrap');
+  Wpx=w.offsetWidth; Hpx=w.offsetHeight;
+  cv.width=Wpx*devicePixelRatio; cv.height=Hpx*devicePixelRatio;
+  cv.style.width=Wpx+'px'; cv.style.height=Hpx+'px';
+  draw();
+}
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+function draw(){
+  const dpr=devicePixelRatio;
+  ct.clearRect(0,0,cv.width,cv.height);
+  ct.fillStyle='#000'; ct.fillRect(0,0,cv.width,cv.height);
+
+  const baseY=Hpx*0.86, maxH=baseY-70;
+  const nx=Wpx/2;
+  const posDay=posH/24;
+  const pph=(Wpx/zoomSpan)/24;
+  const leftH=posH-nx/pph;
+  const rightH=posH+(Wpx-nx)/pph;
+  const barW=Math.max(1,pph*0.88);
+
+  // Draw show bars
+  for(let i=0;i<shows.length;i++){
+    const s=shows[i];
+    if(s.h<leftH-2) continue;
+    if(s.h>rightH+2) break;
+    const x=nx+(s.h-posH)*pph;
+    if(x<-barW||x>Wpx+barW) continue;
+
+    const dayShows=byDay[s.day]||[];
+    const h=maxH*(0.18+(dayShows.length/maxPerDay)*0.78);
+    const dist=Math.abs(s.h-posH);
+    // dist is in fractional hours. proximityRange in hours too.
+    // Fade over 3 hours either side — visible at any zoom level
+    const proximityRange = 3.0;
+    const proximity = Math.max(0, 1 - dist / proximityRange);
+    const isActive=dist<0.6;
+    const alpha=Math.min(1,Math.max(0.15, 0.2+proximity*0.8));
+
+    const barStartX = x;
+    const fontSize=12.5*dpr;
+    const lbl=s.name.length>22?s.name.slice(0,20)+'…':s.name;
+
+    // t: 0=filled/zoomed-out, 1=outline/zoomed-in — smooth transition pph 8..30
+    const t = Math.max(0, Math.min(1, (pph - 8) / 22));
+
+    ct.font=`${fontSize}px 'Courier New',monospace`;
+    const textLen = ct.measureText(lbl).width + barW*2.5;
+
+    // Default height: short (30% of max)
+    const shortH = maxH * 0.28;
+    // Full height: based on text length when zoomed in
+    const fullH = t > 0.5 ? Math.min(maxH, Math.max(shortH*2, textLen)) : maxH*0.7;
+
+    // Progress: grows from proximity visits + audio playback
+    const prog = showProgress[s.h] || 0;
+    // Target height: short by default, grows with progress and proximity
+    const targetH = shortH + (fullH - shortH) * Math.max(prog, proximity * 0.6);
+
+    // Animate display height slowly toward target (ease)
+    if(!showDisplayH[s.h]) showDisplayH[s.h] = shortH;
+    // Grow fast toward target when active, shrink very slowly when not
+    const lerpRate = targetH > showDisplayH[s.h] ? 0.04 : 0.008;
+    showDisplayH[s.h] += (targetH - showDisplayH[s.h]) * lerpRate;
+    const barH = Math.min(maxH, showDisplayH[s.h]);
+
+    // Unified alpha — applies to BOTH fill and outline
+    const barAlpha = 0.25 + proximity * 0.75;
+
+    const bx=barStartX*dpr, by=(baseY-barH)*dpr, bw2=barW*dpr, bh2=barH*dpr;
+    const r=Math.min(bw2/2, 14*dpr);
+
+    function drawRoundedBar(){
+      ct.beginPath();
+      ct.moveTo(bx+r, by);
+      ct.lineTo(bx+bw2-r, by);
+      ct.arcTo(bx+bw2, by, bx+bw2, by+r, r);
+      ct.lineTo(bx+bw2, by+bh2);
+      ct.lineTo(bx, by+bh2);
+      ct.lineTo(bx, by+r);
+      ct.arcTo(bx, by, bx+r, by, r);
+      ct.closePath();
+    }
+
+    // Fill — fades out as t increases
+    if(t < 0.99){
+      drawRoundedBar();
+      ct.fillStyle=`rgba(255,255,255,${barAlpha*(1-t)})`;
+      ct.fill();
+    }
+
+    // Outline — fades in as t increases
+    if(t > 0.01){
+      drawRoundedBar();
+      ct.strokeStyle=`rgba(255,255,255,${barAlpha*t})`;
+      ct.lineWidth=1.5*dpr;
+      ct.stroke();
+    }
+
+    // Text — fades in with outline
+    if(t > 0.1){
+      ct.save();
+      drawRoundedBar(); ct.clip();
+      ct.font=`${fontSize}px 'Courier New',monospace`;
+      ct.fillStyle=`rgba(255,255,255,${barAlpha*Math.min(1,t*1.5)})`;
+      ct.textAlign='center'; ct.textBaseline='middle';
+      ct.translate((barStartX+barW/2)*dpr,(baseY-barH/2)*dpr);
+      ct.rotate(-Math.PI/2);
+      ct.fillText(lbl,0,0);
+      ct.restore();
+    }
+  }
+
+  // Axis line
+  ct.fillStyle='#fff'; ct.fillRect(0,baseY*dpr,Wpx*dpr,Math.max(1,dpr*0.5));
+
+  // Time labels — all white
+  ct.font=`${9*dpr}px 'Courier New',monospace`; ct.textAlign='center'; ct.textBaseline='top';
+  const leftDay=Math.floor(leftH/24), rightDay=Math.ceil(rightH/24);
+
+  if(zoomSpan>=365){
+    // Year markers
+    let ld=new Date(START+leftDay*D); ld.setMonth(0,1);
+    while((ld.getTime()-START)/D<=rightDay+365){
+      const di=(ld.getTime()-START)/D, x=nx+(di-posDay)*pph*24;
+      if(x>8&&x<Wpx-4){
+        ct.fillStyle='rgba(255,255,255,0.5)'; ct.fillRect(x*dpr,baseY*dpr,dpr,10*dpr);
+        ct.fillStyle='rgba(255,255,255,0.7)'; ct.fillText(ld.getFullYear(),x*dpr,(baseY+14)*dpr);
+      }
+      ld.setFullYear(ld.getFullYear()+1);
+    }
+  } else if(zoomSpan>=7){
+    // Month markers
+    let ld=new Date(START+leftDay*D); ld.setDate(1);
+    while((ld.getTime()-START)/D<=rightDay+32){
+      const di=(ld.getTime()-START)/D, x=nx+(di-posDay)*pph*24;
+      if(x>8&&x<Wpx-4){
+        const jan=ld.getMonth()===0;
+        ct.fillStyle=jan?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.3)';
+        ct.fillRect(x*dpr,baseY*dpr,dpr,(jan?12:6)*dpr);
+        ct.fillStyle=jan?'rgba(255,255,255,0.8)':'rgba(255,255,255,0.5)';
+        ct.fillText(jan?ld.getFullYear():MO[ld.getMonth()],x*dpr,(baseY+14)*dpr);
+      }
+      ld.setMonth(ld.getMonth()+1);
+    }
+  } else {
+    // Hours + day dividers
+    // Hour ticks and labels just below axis
+    for(let h=Math.floor(leftH);h<=Math.ceil(rightH);h++){
+      const hr=((h%24)+24)%24;
+      const x=nx+(h-posH)*pph;
+      if(x<8||x>Wpx-4) continue;
+      // Every 2 hours show tick + label
+      if(hr%2===0){
+        ct.fillStyle='rgba(255,255,255,0.35)'; ct.fillRect(x*dpr,baseY*dpr,dpr,5*dpr);
+        ct.fillStyle='rgba(255,255,255,0.6)';
+        ct.font=`${9*dpr}px 'Courier New',monospace`;
+        ct.fillText(pad(hr)+':00', x*dpr, (baseY+7)*dpr);
+      }
+      // Day boundary — midnight
+      if(hr===0){
+        const day=Math.floor(h/24);
+        if(day>=0&&day<TOTAL_DAYS){
+          const dt=new Date(START+day*D);
+          // Vertical day divider line
+          ct.fillStyle='rgba(255,255,255,0.2)'; ct.fillRect(x*dpr,(baseY)*dpr,dpr,22*dpr);
+          // Day label underneath hours — bigger, more spacing
+          ct.fillStyle='rgba(255,255,255,0.6)';
+          ct.font=`${12*dpr}px 'Courier New',monospace`;
+          ct.fillText(DN[dt.getDay()]+' '+dt.getDate()+' '+MF[dt.getMonth()], x*dpr, (baseY+28)*dpr);
+        }
+      }
+    }
+  }
+
+  // Edge fades
+  const fw=56*dpr;
+  const fl=ct.createLinearGradient(0,0,fw,0); fl.addColorStop(0,'rgba(0,0,0,1)'); fl.addColorStop(1,'rgba(0,0,0,0)');
+  ct.fillStyle=fl; ct.fillRect(0,0,fw,cv.height);
+  const fr=ct.createLinearGradient((Wpx-56)*dpr,0,Wpx*dpr,0); fr.addColorStop(0,'rgba(0,0,0,0)'); fr.addColorStop(1,'rgba(0,0,0,1)');
+  ct.fillStyle=fr; ct.fillRect((Wpx-56)*dpr,0,56*dpr,cv.height);
+
+  // Needle label
+  updateNeedleLabel();
+}
+
+function updateNeedleLabel(){
+  const day=Math.max(0,Math.min(TOTAL_DAYS-1,Math.floor(posH/24)));
+  const hour=Math.floor(((posH%24)+24)%24);
+  const d=new Date(START+day*D);
+  const isNow=posH>=TOTAL_HOURS-1;
+  let lbl;
+  if(isNow) lbl='NOW';
+  else if(zoomSpan>=730) lbl=MO[d.getMonth()]+' '+d.getFullYear();
+  else if(zoomSpan>=30) lbl=MF[d.getMonth()]+' '+d.getDate()+' '+d.getFullYear();
+  else if(zoomSpan>=1) lbl=DN[d.getDay()]+' '+d.getDate()+' '+MF[d.getMonth()]+' '+d.getFullYear();
+  else lbl=pad(hour)+':00  '+DN[d.getDay()]+' '+d.getDate()+' '+MF[d.getMonth()];
+  ndEl.textContent=lbl;
+}
+
+// ─── PLAYER INFO UPDATE ───────────────────────────────────────────────────────
+function updateInfo(){
+  const day=Math.max(0,Math.min(TOTAL_DAYS-1,Math.floor(posH/24)));
+  const hour=Math.floor(((posH%24)+24)%24);
+  const d=new Date(START+day*D);
+  const isNow=posH>=TOTAL_HOURS-1;
+
+  // Update progress for shows near needle
+  for(const s of shows){
+    const dist=Math.abs(s.h-posH);
+    if(dist<3.0){
+      const p=Math.max(0,1-dist/3.0);
+      showProgress[s.h]=Math.min(1,Math.max(showProgress[s.h]||0, p*0.7));
+    }
+  }
+  // Also grow progress of current show as audio plays
+  if(currentShow && !audio.paused && audio.duration){
+    const playProg=audio.currentTime/audio.duration;
+    showProgress[currentShow.h]=Math.min(1,Math.max(showProgress[currentShow.h]||0, playProg));
+  }
+
+  // Date display top right
+  if(isNow) ddEl.textContent='Now · Today';
+  else if(zoomSpan>=365) ddEl.textContent=MFull[d.getMonth()]+' '+d.getFullYear();
+  else if(zoomSpan>=7) ddEl.textContent=MFull[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();
+  else ddEl.textContent=DFull[d.getDay()]+', '+MFull[d.getMonth()]+' '+d.getDate();
+
+  // Find show under needle
+  const dayShows=byDay[day]||[];
+  let show=null;
+  if(zoomSpan<2){
+    for(const s of dayShows){ if(s.hour<=hour) show=s; }
+  } else {
+    show=dayShows.length>0?dayShows[0]:null;
+  }
+
+  if(show && show!==currentShow){
+    currentShow=show;
+    loadShow(show);
+  } else if(!show && currentShow){
+    currentShow=null;
+    clearPlayer();
+  }
+}
+
+function loadShow(show){
+  const d=new Date(START+show.day*D);
+  playerDate.textContent=DFull[d.getDay()].toUpperCase()+' '+d.getDate()+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+d.getFullYear();
+  playerName.textContent='['+show.name+']'+(show.artist&&show.artist!=='Various'?' — '+show.artist:'');
+
+  // Artwork
+  if(show.artworkUrl){
+    playerImg.src=show.artworkUrl;
+    playerImg.style.display='block';
+    playerArtText.style.display='none';
+  } else {
+    playerImg.style.display='none';
+    playerArtText.style.display='block';
+  }
+
+  if(show.audioUrl){
+    // Has audio
+    noAudioEl.style.display='none';
+    rewindBtn.style.display='flex';
+    playBtn.style.display='flex';
+
+    // Only reload if different
+    if(audio.dataset.src!==show.audioUrl){
+      audio.pause();
+      audio.src=show.audioUrl;
+      audio.dataset.src=show.audioUrl;
+      audio.load();
+      playIcon.innerHTML='<polygon points="5 3 19 12 5 21 5 3"/>';
+      scrubFill.style.width='0%';
+      scrubDot.style.left='0%';
+      timeDisplay.textContent='00:00';
+    }
+  } else {
+    // No audio yet
+    noAudioEl.style.display='block';
+    noAudioEl.textContent='no recording available';
+    rewindBtn.style.display='none';
+    playBtn.style.display='none';
+    audio.pause();
+    audio.src='';
+    audio.dataset.src='';
+  }
+}
+
+function clearPlayer(){
+  playerDate.textContent='—';
+  playerName.textContent='select a show';
+  playerImg.style.display='none';
+  playerArtText.style.display='block';
+  playerArtText.textContent='NO ART';
+  noAudioEl.style.display='block';
+  noAudioEl.textContent='turn knob to browse archive';
+  rewindBtn.style.display='none';
+  playBtn.style.display='none';
+  audio.pause();
+  audio.src='';
+  scrubFill.style.width='0%';
+  scrubDot.style.left='0%';
+  timeDisplay.textContent='00:00';
+}
+
+// ─── AUDIO EVENTS ────────────────────────────────────────────────────────────
+audio.addEventListener('timeupdate',()=>{
+  if(!audio.duration) return;
+  const pct=audio.currentTime/audio.duration*100;
+  scrubFill.style.width=pct+'%';
+  scrubDot.style.left=pct+'%';
+  timeDisplay.textContent=fmt(audio.currentTime);
+});
+audio.addEventListener('ended',()=>{
+  playIcon.innerHTML='<polygon points="5 3 19 12 5 21 5 3"/>';
+});
+
+playBtn.addEventListener('click',()=>{
+  if(audio.paused){
+    audio.play();
+    playIcon.innerHTML='<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+  } else {
+    audio.pause();
+    playIcon.innerHTML='<polygon points="5 3 19 12 5 21 5 3"/>';
+  }
+});
+
+rewindBtn.addEventListener('click',()=>{
+  audio.currentTime=Math.max(0,audio.currentTime-30);
+});
+
+let scrubbing=false;
+scrubWrap.addEventListener('mousedown',e=>{scrubbing=true;seek(e);});
+scrubWrap.addEventListener('touchstart',e=>{scrubbing=true;seek(e.touches[0]);},{passive:true});
+window.addEventListener('mousemove',e=>{if(scrubbing)seek(e);});
+window.addEventListener('touchmove',e=>{if(scrubbing)seek(e.touches[0]);},{passive:true});
+window.addEventListener('mouseup',()=>{scrubbing=false;});
+window.addEventListener('touchend',()=>{scrubbing=false;});
+function seek(e){
+  if(!audio.duration) return;
+  const rect=scrubWrap.getBoundingClientRect();
+  const ratio=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
+  audio.currentTime=ratio*audio.duration;
+}
+
+// ─── ZOOM ANIMATION ───────────────────────────────────────────────────────────
+function animateZoom(){
+  const diff=targetZoom-zoomSpan;
+  if(Math.abs(diff)<0.005){
+    zoomSpan=targetZoom;
+    zsEl.textContent=zoomLabel(zoomSpan);
+    draw(); updateInfo(); return;
+  }
+  zoomSpan+=diff*0.1;
+  zsEl.textContent=zoomLabel(zoomSpan);
+  draw(); updateInfo();
+  zoomRaf=requestAnimationFrame(animateZoom);
+}
+
+// ─── KNOBS ────────────────────────────────────────────────────────────────────
+function setupKnob(el, dot, onDelta){
+  let lastAngle=null;
+  const getAngle=e=>{
+    const r=el.getBoundingClientRect();
+    const cx=r.left+r.width/2, cy=r.top+r.height/2;
+    const x=(e.touches?e.touches[0].clientX:e.clientX)-cx;
+    const y=(e.touches?e.touches[0].clientY:e.clientY)-cy;
+    return Math.atan2(y,x)*180/Math.PI;
+  };
+  const onStart=e=>{
+    e.preventDefault();
+    lastAngle=getAngle(e);
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onEnd);
+    window.addEventListener('touchmove',onMove,{passive:false});
+    window.addEventListener('touchend',onEnd);
+  };
+  const onMove=e=>{
+    e.preventDefault();
+    const a=getAngle(e);
+    let d=a-lastAngle;
+    if(d>180) d-=360;
+    if(d<-180) d+=360;
+    lastAngle=a;
+    onDelta(d, false);
+  };
+  const onEnd=()=>{
+    window.removeEventListener('mousemove',onMove);
+    window.removeEventListener('mouseup',onEnd);
+    window.removeEventListener('touchmove',onMove);
+    window.removeEventListener('touchend',onEnd);
+    lastAngle=null;
+    onDelta(0, true); // signal release
+  };
+  el.addEventListener('mousedown',onStart);
+  el.addEventListener('touchstart',onStart,{passive:false});
+}
+
+// Tuning knob — light inertia for smooth feel, stops quickly for accuracy
+let tuneVelocity=0;
+let tuneInertiaRaf=null;
+const tuneVelocityHistory=[];
+
+function applyTuneInertia(){
+  if(Math.abs(tuneVelocity)<0.01){ tuneVelocity=0; return; }
+  tuneVelocity*=0.82; // fast deceleration — accurate but smooth
+  tuneCum+=tuneVelocity;
+  tdEl.style.transform=`translateX(-50%) rotate(${tuneCum}deg)`;
+  tdEl.style.transformOrigin='50% 21px';
+  const hoursPerRev=Math.max(0.1,zoomSpan)*24;
+  posH=Math.max(0,Math.min(TOTAL_HOURS-0.01, posH+tuneVelocity/1400*hoursPerRev));
+  draw(); updateInfo();
+  tuneInertiaRaf=requestAnimationFrame(applyTuneInertia);
+}
+
+setupKnob(document.getElementById('tk'), tdEl, (delta, isEnd)=>{
+  if(isEnd){
+    if(tuneVelocityHistory.length>0){
+      const avg=tuneVelocityHistory.reduce((a,b)=>a+b,0)/tuneVelocityHistory.length;
+      tuneVelocity=avg*0.9; // small kick — just enough ease-out
+    }
+    tuneVelocityHistory.length=0;
+    if(tuneInertiaRaf) cancelAnimationFrame(tuneInertiaRaf);
+    tuneInertiaRaf=requestAnimationFrame(applyTuneInertia);
+    return;
+  }
+  if(tuneInertiaRaf){ cancelAnimationFrame(tuneInertiaRaf); tuneInertiaRaf=null; }
+  tuneVelocityHistory.push(delta);
+  if(tuneVelocityHistory.length>4) tuneVelocityHistory.shift();
+
+  tuneCum+=delta;
+  tdEl.style.transform=`translateX(-50%) rotate(${tuneCum}deg)`;
+  tdEl.style.transformOrigin='50% 21px';
+  const hoursPerRev=Math.max(0.1,zoomSpan)*24;
+  posH=Math.max(0,Math.min(TOTAL_HOURS-0.01, posH+delta/1400*hoursPerRev));
+  draw(); updateInfo();
+});
+
+// Zoom knob — stops at limits
+let zoomVelocity=0;
+let zoomInertiaRaf=null;
+const zoomVelocityHistory=[];
+
+function applyZoomInertia(){
+  if(Math.abs(zoomVelocity)<0.001){ zoomVelocity=0; return; }
+  zoomVelocity*=0.94;
+  const factor=Math.pow(10, zoomVelocity/700);
+  const newZoom=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX, targetZoom*factor));
+  if(newZoom!==targetZoom){
+    zoomCumAngle+=zoomVelocity;
+    zdEl.style.transform=`translateX(-50%) rotate(${zoomCumAngle}deg)`;
+    zdEl.style.transformOrigin='50% 21px';
+    targetZoom=newZoom;
+    if(zoomRaf) cancelAnimationFrame(zoomRaf);
+    animateZoom();
+  } else {
+    zoomVelocity=0; return;
+  }
+  zoomInertiaRaf=requestAnimationFrame(applyZoomInertia);
+}
+
+setupKnob(document.getElementById('zk'), zdEl, (delta, isEnd)=>{
+  if(isEnd){
+    if(zoomVelocityHistory.length>0){
+      const avg=zoomVelocityHistory.reduce((a,b)=>a+b,0)/zoomVelocityHistory.length;
+      zoomVelocity=avg*1.2;
+    }
+    zoomVelocityHistory.length=0;
+    if(zoomInertiaRaf) cancelAnimationFrame(zoomInertiaRaf);
+    zoomInertiaRaf=requestAnimationFrame(applyZoomInertia);
+    return;
+  }
+  if(zoomInertiaRaf){ cancelAnimationFrame(zoomInertiaRaf); zoomInertiaRaf=null; }
+  zoomVelocityHistory.push(delta);
+  if(zoomVelocityHistory.length>6) zoomVelocityHistory.shift();
+
+  const prevZoom=targetZoom;
+  const factor=Math.pow(10, delta/700);
+  const newZoom=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX, targetZoom*factor));
+  if(newZoom!==prevZoom) zoomCumAngle+=delta;
+  zdEl.style.transform=`translateX(-50%) rotate(${zoomCumAngle}deg)`;
+  zdEl.style.transformOrigin='50% 21px';
+  targetZoom=newZoom;
+  if(zoomRaf) cancelAnimationFrame(zoomRaf);
+  animateZoom();
+});
+
+// Init knob positions
+zdEl.style.transform=`translateX(-50%) rotate(${zoomCumAngle}deg)`;
+zdEl.style.transformOrigin='50% 21px';
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', resize);
+
+// Continuous render loop for smooth height animations
+function renderLoop(){
+  draw();
+  requestAnimationFrame(renderLoop);
+}
+
+setTimeout(()=>{
+  resize();
+  zsEl.textContent=zoomLabel(zoomSpan);
+  updateInfo();
+  renderLoop();
+}, 100);
+</script>
+</body>
+</html>
